@@ -16,12 +16,13 @@ import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'fireb
 // ============================================================
 
 const firebaseConfig = {
-  apiKey: "TU_API_KEY",
-  authDomain: "tu-proyecto.firebaseapp.com",
-  projectId: "tu-proyecto",
-  storageBucket: "tu-proyecto.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
+  apiKey: "AIzaSyCVzt9g3sZtrd_Htngeqb9mOfkkuRg2S4U",
+  authDomain: "escape-maker.firebaseapp.com",
+  projectId: "escape-maker",
+  storageBucket: "escape-maker.firebasestorage.app",
+  messagingSenderId: "173138856190",
+  appId: "1:173138856190:web:faa46e4d3d0287cacbbdaf",
+  measurementId: "G-XJT0RL2S8G"
 };
 
 export const appId = "escape-room-editor";
