@@ -240,7 +240,7 @@ const App = () => {
               </div>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-indigo-950 tracking-tight uppercase italic leading-none">Escape Maker</h1>
+              <h1 className="text-2xl font-black text-indigo-950 tracking-tight uppercase italic leading-none">Escape Rom</h1>
               <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.3em] mt-1 italic">Project Manager</p>
             </div>
           </div>
