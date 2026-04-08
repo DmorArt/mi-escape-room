@@ -59,7 +59,7 @@ export function getDbInstance() {
 // --- Autenticación ---
 export async function initAuth(customToken = null) {
   if (!isFirebaseConfigured) {
-    console.warn("Firebase no configurado. Modo local activo.");
+    console.info("Escape Maker: Modo local activo (sin Firebase).");
     return null;
   }
   try {
@@ -70,7 +70,8 @@ export async function initAuth(customToken = null) {
       return await signInAnonymously(authInstance);
     }
   } catch (error) {
-    console.error("Error en autenticación Firebase:", error);
+    // Si Auth no está habilitado, no es error crítico — funciona en modo local
+    console.info("Escape Maker: Auth no disponible, funcionando en modo local.");
     return null;
   }
 }
@@ -80,8 +81,13 @@ export function onAuthChange(callback) {
     callback(null);
     return () => {};
   }
-  const authInstance = getAuthInstance();
-  return onAuthStateChanged(authInstance, callback);
+  try {
+    const authInstance = getAuthInstance();
+    return onAuthStateChanged(authInstance, callback);
+  } catch (error) {
+    callback(null);
+    return () => {};
+  }
 }
 
 // --- Firestore: Guardar / Cargar / Escuchar ---
