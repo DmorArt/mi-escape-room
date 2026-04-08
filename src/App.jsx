@@ -4,11 +4,11 @@ import {
   Search, Key, BookOpen, FlaskConical, ScrollText, 
   Monitor, Lock, CheckCircle, ChevronRight, MousePointer2,
   Spline, Sparkles, Type, AlignLeft, Image as ImageIcon,
-  Puzzle, FileImage, Save, FolderOpen, AlertCircle
+  Puzzle, FileImage, Save, FolderOpen, Maximize2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 
 // --- CONFIGURACIÓN DE FIREBASE ---
 const firebaseConfig = JSON.parse(__firebase_config);
@@ -27,9 +27,8 @@ const App = () => {
   };
 
   const [bubbles, setBubbles] = useState([
-    { id: 1, x: 22, y: 20, tx: 10, ty: 45, cx: 15, cy: 30, text: "LA BIBLIOTECA DEL SABER", theme: "green", step: "1", icon: "BookOpen", type: "title" },
-    { id: 2, x: 38, y: 15, tx: 28, ty: 25, cx: 33, cy: 20, text: "Encuentra la llave oculta en el lomo del libro de Historia.", theme: "green", step: "", icon: "Search", type: "content" },
-    { id: 3, x: 50, y: 75, tx: 42, ty: 85, cx: 46, cy: 80, image: null, theme: "blue", type: "photo" },
+    { id: 1, x: 22, y: 20, tx: 10, ty: 45, cx: 15, cy: 30, text: "LA BIBLIOTECA DEL SABER", theme: "green", step: "1", icon: "BookOpen", type: "title", w: 260, h: 80 },
+    { id: 2, x: 38, y: 15, tx: 28, ty: 25, cx: 33, cy: 20, text: "Encuentra la llave oculta en el lomo del libro de Historia.", theme: "green", step: "", icon: "Search", type: "content", w: 260, h: 110 },
   ]);
   
   const [editMode, setEditMode] = useState(true);
@@ -41,7 +40,6 @@ const App = () => {
   const [user, setUser] = useState(null);
   const containerRef = useRef(null);
 
-  // --- LÓGICA DE FIREBASE ---
   useEffect(() => {
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -55,7 +53,6 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // Inyectar html2canvas para la descarga de imagen
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
@@ -100,10 +97,12 @@ const App = () => {
     const newBubble = {
       id: Date.now(),
       x: 50, y: 50, tx: 55, ty: 65, cx: 52, cy: 58,
-      text: type === 'title' ? "NUEVO TÍTULO" : "Descripción detallada...", 
+      text: type === 'title' ? "NUEVO TÍTULO" : "Escribe aquí el contenido...", 
       theme: "white", step: type === 'title' ? "!" : "", icon: "ChevronRight",
       type: type,
-      image: null
+      image: null,
+      w: 260,
+      h: type === 'title' ? 80 : 110
     };
     setBubbles([...bubbles, newBubble]);
     setSelectedId(newBubble.id);
@@ -118,8 +117,9 @@ const App = () => {
     setBubbles(bubbles.map(b => b.id === id ? { ...b, ...updates } : b));
   };
 
-  const handleMouseDown = (id, type) => {
+  const handleMouseDown = (id, type, e) => {
     if (!editMode) return;
+    e.stopPropagation();
     setSelectedId(id);
     setDragType(type);
   };
@@ -129,32 +129,44 @@ const App = () => {
     const rect = containerRef.current.getBoundingClientRect();
     const pxX = e.clientX - rect.left;
     const pxY = e.clientY - rect.top;
-    const x = (pxX / rect.width) * 100;
-    const y = (pxY / rect.height) * 100;
-    const cx = Math.max(0, Math.min(100, x));
-    const cy = Math.max(0, Math.min(100, y));
+    
+    const xPercent = (pxX / rect.width) * 100;
+    const yPercent = (pxY / rect.height) * 100;
+    const cx = Math.max(0, Math.min(100, xPercent));
+    const cy = Math.max(0, Math.min(100, yPercent));
 
-    if (dragType === 'bubble') updateBubble(selectedId, { x: cx, y: cy });
-    else if (dragType === 'target') updateBubble(selectedId, { tx: cx, ty: cy });
-    else if (dragType === 'control') updateBubble(selectedId, { cx: cx, cy: cy });
+    if (dragType === 'bubble') {
+      updateBubble(selectedId, { x: cx, y: cy });
+    } else if (dragType === 'target') {
+      updateBubble(selectedId, { tx: cx, ty: cy });
+    } else if (dragType === 'control') {
+      updateBubble(selectedId, { cx: cx, cy: cy });
+    } else if (dragType === 'resize') {
+      const bubble = bubbles.find(b => b.id === selectedId);
+      if (!bubble) return;
+      
+      const startXPx = (bubble.x / 100) * rect.width;
+      const startYPx = (bubble.y / 100) * rect.height;
+      
+      // El mouse está en pxX, pxY. El centro de la burbuja está en startXPx, startYPx.
+      // El manejador está en la esquina inferior derecha.
+      // Nueva anchura = (pxX - startXPx) * 2 (porque x/y es el centro)
+      const newW = Math.max(100, (pxX - startXPx) * 2);
+      const newH = Math.max(40, (pxY - startYPx) * 2);
+      
+      updateBubble(selectedId, { w: newW, h: newH });
+    }
   };
 
   const handleMouseUp = () => setDragType(null);
 
-  // --- GUARDADO Y CARGA (JSON) ---
   const saveProject = () => {
-    const projectData = {
-      bubbles,
-      backgroundImage, // Nota: base64 puede ser pesado
-      version: "1.0"
-    };
+    const projectData = { bubbles, backgroundImage, version: "1.3" };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(projectData));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "escape_room_proyecto.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    const link = document.createElement('a');
+    link.setAttribute("href", dataStr);
+    link.setAttribute("download", "escape_room_proyecto.json");
+    link.click();
   };
 
   const loadProject = (e) => {
@@ -166,9 +178,7 @@ const App = () => {
         const project = JSON.parse(event.target.result);
         if (project.bubbles) setBubbles(project.bubbles);
         if (project.backgroundImage) setBackgroundImage(project.backgroundImage);
-      } catch (err) {
-        console.error("Error cargando archivo:", err);
-      }
+      } catch (err) { console.error("Error:", err); }
     };
     reader.readAsText(file);
   };
@@ -190,7 +200,7 @@ const App = () => {
         setEditMode(wasEditMode);
         setIsExporting(false);
       }
-    }, 300);
+    }, 400);
   };
 
   const renderArrows = useMemo(() => {
@@ -204,9 +214,12 @@ const App = () => {
       const ctrlX = (b.cx / 100) * dimensions.width;
       const ctrlY = (b.cy / 100) * dimensions.height;
       const angle = Math.atan2(ctrlY - startY, ctrlX - startX);
-      let radiusX = 100, radiusY = 40;
+      
+      // Radio dinámico basado en el tamaño actual de la burbuja
+      let radiusX = (b.w || 260) / 2;
+      let radiusY = (b.h || 80) / 2;
       if (b.type === 'photo') { radiusX = 50; radiusY = 50; }
-      else if (b.type === 'content') { radiusX = 100; radiusY = 35; }
+      
       const edgeX = startX + Math.cos(angle) * radiusX;
       const edgeY = startY + Math.sin(angle) * radiusY;
       const path = `M ${edgeX} ${edgeY} Q ${ctrlX} ${ctrlY} ${targetX} ${targetY}`;
@@ -227,20 +240,15 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans text-slate-800 select-none" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
-      {/* HEADER */}
       <header className="bg-white border-b-4 border-indigo-100 p-4 sticky top-0 z-50 shadow-lg print:hidden">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
             <div className="relative">
-              <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-xl rotate-[-6deg] z-10 relative">
-                <Puzzle size={28} />
-              </div>
-              <div className="absolute -top-1 -right-2 bg-yellow-400 p-1.5 rounded-lg text-yellow-900 shadow-md rotate-[12deg] z-20 border-2 border-white">
-                <Key size={16} />
-              </div>
+              <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-xl rotate-[-6deg] z-10 relative"><Puzzle size={28} /></div>
+              <div className="absolute -top-1 -right-2 bg-yellow-400 p-1.5 rounded-lg text-yellow-900 shadow-md rotate-[12deg] z-20 border-2 border-white"><Key size={16} /></div>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-indigo-950 tracking-tight uppercase italic leading-none">Escape Rom</h1>
+              <h1 className="text-2xl font-black text-indigo-950 tracking-tight uppercase italic leading-none">Escape Maker</h1>
               <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.3em] mt-1 italic">Project Manager</p>
             </div>
           </div>
@@ -255,9 +263,7 @@ const App = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={saveProject} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-700 text-white rounded-xl hover:bg-indigo-600 shadow-md transition-all text-xs font-black uppercase">
-              <Save size={16} /> Guardar
-            </button>
+            <button onClick={saveProject} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-700 text-white rounded-xl hover:bg-indigo-600 shadow-md transition-all text-xs font-black uppercase"><Save size={16} /> Guardar</button>
             <label className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-700 cursor-pointer shadow-md transition-all text-xs font-black uppercase">
               <FolderOpen size={16} /> Abrir
               <input type="file" className="hidden" onChange={loadProject} accept=".json" />
@@ -266,32 +272,23 @@ const App = () => {
         </div>
       </header>
 
-      {/* CONTROLES DE EDICIÓN */}
       {editMode && (
         <div className="bg-indigo-50 border-b-2 border-indigo-100 p-3 flex justify-center gap-4 sticky top-[84px] z-40">
            <label className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 cursor-pointer transition-all text-xs font-bold uppercase">
-              <Upload size={14} /> Subir Mapa Fondo
+              <Upload size={14} /> Subir Mapa
               <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
             </label>
-            <button onClick={() => addBubble('title')} className="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-yellow-950 rounded-lg hover:bg-yellow-300 shadow-sm text-xs font-black uppercase">
-              <Plus size={14} /> + Título
-            </button>
-            <button onClick={() => addBubble('content')} className="flex items-center gap-2 px-4 py-2 bg-slate-200 text-slate-900 rounded-lg hover:bg-slate-300 shadow-sm text-xs font-black uppercase">
-              <AlignLeft size={14} /> + Texto
-            </button>
-            <button onClick={() => addBubble('photo')} className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-900 rounded-lg hover:bg-indigo-200 shadow-sm text-xs font-black uppercase">
-              <ImageIcon size={14} /> + Foto
-            </button>
+            <button onClick={() => addBubble('title')} className="flex items-center gap-2 px-4 py-2 bg-yellow-400 text-yellow-950 rounded-lg hover:bg-yellow-300 shadow-sm text-xs font-black uppercase"><Plus size={14} /> + Título</button>
+            <button onClick={() => addBubble('content')} className="flex items-center gap-2 px-4 py-2 bg-slate-200 text-slate-900 rounded-lg hover:bg-slate-300 shadow-sm text-xs font-black uppercase"><AlignLeft size={14} /> + Texto</button>
+            <button onClick={() => addBubble('photo')} className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-900 rounded-lg hover:bg-indigo-200 shadow-sm text-xs font-black uppercase"><ImageIcon size={14} /> + Foto</button>
         </div>
       )}
 
-      {/* ÁREA DEL MAPA */}
       <main className="flex-1 p-8 flex justify-center items-start overflow-auto bg-[#f8fafc] print:p-0">
         <div className="relative inline-block print:m-0">
-          <div ref={containerRef} className={`relative rounded-[2rem] overflow-hidden shadow-2xl border-[10px] ${editMode ? 'border-indigo-100' : 'border-white'} transition-all print:border-0 print:rounded-none print:shadow-none`} style={{ minWidth: '980px', minHeight: '600px', backgroundColor: '#fff' }}>
-            {backgroundImage ? (
-              <img src={backgroundImage} alt="Fondo" className="block max-w-full h-auto pointer-events-none" draggable="false" />
-            ) : (
+          <div ref={containerRef} className={`relative rounded-[2rem] overflow-hidden shadow-2xl border-[10px] ${editMode ? 'border-indigo-100' : 'border-white'} transition-all print:border-0 print:rounded-none`} style={{ minWidth: '980px', minHeight: '600px', backgroundColor: '#fff' }}>
+            {backgroundImage && <img src={backgroundImage} alt="Fondo" className="block max-w-full h-auto pointer-events-none" draggable="false" />}
+            {!backgroundImage && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 bg-slate-50 gap-4">
                 <Upload size={64} className="opacity-20" />
                 <p className="font-black uppercase tracking-widest text-slate-300">Carga la imagen del Escape Room</p>
@@ -306,18 +303,33 @@ const App = () => {
               const isTitle = bubble.type === 'title';
               const isPhoto = bubble.type === 'photo';
 
+              const bubbleStyle = {
+                width: `${bubble.w || 260}px`,
+                height: `${bubble.h || 100}px`,
+                padding: '12px',
+                fontSize: isTitle ? '14px' : '11px',
+                lineHeight: '1.4',
+                textAlign: 'center',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-start',
+                alignItems: 'center',
+                overflow: 'hidden'
+              };
+
               return (
                 <React.Fragment key={bubble.id}>
                   {editMode && (
                     <>
                       <div style={{ left: `${bubble.cx}%`, top: `${bubble.cy}%`, transform: 'translate(-50%, -50%)' }}
                         className={`absolute w-6 h-6 border-2 border-white shadow-xl cursor-grab z-30 flex items-center justify-center rotate-45 ${theme.icon} hover:scale-125 transition-transform`}
-                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(bubble.id, 'control'); }}>
+                        onMouseDown={(e) => handleMouseDown(bubble.id, 'control', e)}>
                         <div className="w-1 h-1 bg-white rounded-full"></div>
                       </div>
                       <div style={{ left: `${bubble.tx}%`, top: `${bubble.ty}%`, transform: 'translate(-50%, -50%)' }}
                         className={`absolute w-8 h-8 rounded-full border-4 border-white shadow-2xl cursor-crosshair z-30 flex items-center justify-center ${theme.icon} hover:scale-110 transition-transform`}
-                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(bubble.id, 'target'); }}>
+                        onMouseDown={(e) => handleMouseDown(bubble.id, 'target', e)}>
                         <Search size={12} className="text-white" />
                       </div>
                     </>
@@ -325,25 +337,30 @@ const App = () => {
 
                   <div style={{ left: `${bubble.x}%`, top: `${bubble.y}%`, transform: 'translate(-50%, -50%)', zIndex: isSelected ? 50 : 20 }}
                     className={`absolute group ${editMode ? 'cursor-move' : ''}`}
-                    onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(bubble.id, 'bubble'); }}>
+                    onMouseDown={(e) => handleMouseDown(bubble.id, 'bubble', e)}>
                     
-                    <div className={`relative flex items-center justify-center transition-all ${
+                    <div className={`relative transition-all overflow-visible ${
                       isPhoto 
                         ? 'w-24 h-24 rounded-full border-[4px]' 
                         : isTitle 
-                          ? 'px-6 py-4 border-[4px] rounded-lg' 
-                          : 'px-4 py-3 border-[2px] rounded-md'
-                      } ${theme.bg} ${theme.border} ${theme.shadow} ${isSelected ? 'ring-4 ring-offset-2 ring-indigo-400 scale-105' : 'scale-100'}`}>
+                          ? 'border-[4px] rounded-lg' 
+                          : 'border-[2px] rounded-md'
+                      } ${theme.bg} ${theme.border} ${theme.shadow} ${isSelected ? 'ring-4 ring-offset-2 ring-indigo-400 scale-105' : 'scale-100'}`}
+                      style={!isPhoto ? bubbleStyle : {}}
+                    >
+                      {/* MANEJADOR DE TAMAÑO (ESQUINA INFERIOR DERECHA) */}
+                      {editMode && isSelected && !isPhoto && (
+                        <div 
+                          className="absolute bottom-0 right-0 p-1 cursor-nwse-resize text-indigo-400 hover:text-indigo-600 z-50 bg-white/50 rounded-tl-lg"
+                          onMouseDown={(e) => handleMouseDown(bubble.id, 'resize', e)}
+                        >
+                          <Maximize2 size={12} className="rotate-90" />
+                        </div>
+                      )}
                       
                       {isPhoto ? (
                         <div className="w-full h-full rounded-full overflow-hidden relative group/photo">
-                          {bubble.image ? (
-                            <img src={bubble.image} className="w-full h-full object-cover" alt="Contenido" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-slate-300 bg-white/50">
-                              <ImageIcon size={24} />
-                            </div>
-                          )}
+                          {bubble.image ? <img src={bubble.image} className="w-full h-full object-cover" alt="Contenido" /> : <div className="w-full h-full flex items-center justify-center text-slate-300 bg-white/50"><ImageIcon size={24} /></div>}
                           {editMode && (
                             <label className="absolute inset-0 bg-black/40 opacity-0 group-hover/photo:opacity-100 flex items-center justify-center cursor-pointer">
                               <Upload size={20} className="text-white" />
@@ -352,20 +369,23 @@ const App = () => {
                           )}
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-2">
+                        <div className="w-full h-full relative flex flex-col items-center">
                           {isTitle && bubble.step && (
-                            <div className={`absolute -top-4 -left-4 w-10 h-10 rounded-lg border-[3px] border-white text-white flex items-center justify-center text-base font-black shadow-xl ${theme.icon} z-10 rotate-[-5deg]`}>
-                              {bubble.step}
-                            </div>
+                            <div className={`absolute -top-6 -left-6 w-10 h-10 rounded-lg border-[3px] border-white text-white flex items-center justify-center text-base font-black shadow-xl ${theme.icon} z-10 rotate-[-5deg]`}>{bubble.step}</div>
                           )}
+                          
                           {editMode ? (
-                            <textarea value={bubble.text} onChange={(e) => updateBubble(bubble.id, { text: e.target.value })}
-                              className={`bg-transparent border-none outline-none w-full text-center resize-none placeholder:text-slate-300 leading-tight ${isTitle ? 'text-sm font-black uppercase ' + theme.text : 'text-[11px] font-bold text-black'}`}
-                              rows={isTitle ? 2 : 3} onClick={(e) => e.stopPropagation()} />
+                            <textarea 
+                              value={bubble.text} 
+                              onChange={(e) => updateBubble(bubble.id, { text: e.target.value })}
+                              className={`bg-transparent border-none outline-none w-full text-center resize-none placeholder:text-slate-300 leading-tight font-sans pt-1 ${isTitle ? 'font-black uppercase ' + theme.text : 'font-bold text-black'}`}
+                              style={{ height: '100%', pointerEvents: dragType === 'resize' ? 'none' : 'auto' }}
+                              onClick={(e) => e.stopPropagation()} 
+                            />
                           ) : (
-                            <p className={`text-center leading-tight whitespace-pre-wrap ${isTitle ? 'text-sm font-black uppercase ' + theme.text : 'text-[11px] font-bold text-black'}`}>
-                              {bubble.text}
-                            </p>
+                            <div className="flex items-start justify-center w-full h-full pt-1">
+                                <p className={`text-center leading-tight whitespace-pre-wrap w-full break-words font-sans ${isTitle ? 'font-black uppercase ' + theme.text : 'font-bold text-black'}`}>{bubble.text}</p>
+                            </div>
                           )}
                         </div>
                       )}
@@ -377,11 +397,7 @@ const App = () => {
                               className={`w-7 h-7 rounded-lg border-2 ${colorThemes[t].bg} ${colorThemes[t].border} hover:scale-125 transition-transform shadow-sm`} />
                           ))}
                           <div className="w-px h-6 bg-slate-200 mx-1" />
-                          <button onClick={(e) => { e.stopPropagation(); deleteBubble(bubble.id); }} 
-                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors shadow-sm"
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); deleteBubble(bubble.id); }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors shadow-sm"><Trash2 size={18} /></button>
                         </div>
                       )}
                     </div>
@@ -393,13 +409,8 @@ const App = () => {
         </div>
       </main>
 
-      {/* FOOTER */}
       <footer className="bg-slate-900 text-white p-6 px-10 flex justify-between items-center border-t-4 border-indigo-500 print:hidden">
-        <div className="flex items-center gap-4">
-          <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_15px_#10b981]"></div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Project Safe Active</span>
-        </div>
-        
+        <div className="flex items-center gap-4"><div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_15px_#10b981]"></div></div>
         <button 
           onClick={handleExportAsImage} 
           disabled={isExporting}
